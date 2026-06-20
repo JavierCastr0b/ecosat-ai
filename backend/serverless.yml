@@ -36,6 +36,7 @@ package:
     - 'api/**'
     - 'workers/**'
     - 'shared/**'
+    - 'vendor/**'
 
 functions:
   authRegister:

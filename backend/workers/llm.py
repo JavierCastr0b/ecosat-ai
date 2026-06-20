@@ -4,6 +4,10 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from shared.vendor import add_vendor_path
+
+add_vendor_path()
+
 import boto3
 from groq import Groq, RateLimitError
 
