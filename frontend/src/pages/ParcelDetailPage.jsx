@@ -8,6 +8,7 @@ import IndexChart from '../components/IndexChart'
 import StatusBadge from '../components/StatusBadge'
 import Spinner from '../components/Spinner'
 import { formatArea, parcelArea } from '../utils/geo'
+import { openReportPdf } from '../utils/report'
 
 const CROP_LABELS = {
   cacao: 'Cacao', cafe: 'Café', banano: 'Banano', cana: 'Caña de azúcar',
@@ -24,6 +25,7 @@ export default function ParcelDetailPage() {
   const [collection, setCollection] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedReportId, setSelectedReportId] = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -67,22 +69,15 @@ export default function ParcelDetailPage() {
   const latest = summary?.latest
   const series = summary?.series
   const area = parcelArea(parcel)
+  const selectedReport = analyses.find((item) => item.analysis_id === selectedReportId) ?? latest
 
-  function handleExportReport() {
-    const report = {
+  function handleExportReport(report = selectedReport) {
+    openReportPdf({
       parcel,
       collection,
-      latest,
+      report,
       analyses,
-      generated_at: new Date().toISOString(),
-    }
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `ecosat-reporte-${parcel?.name ?? id}.json`
-    link.click()
-    URL.revokeObjectURL(url)
+    })
   }
 
   return (
@@ -121,10 +116,10 @@ export default function ParcelDetailPage() {
             Eliminar lote
           </button>
           <button
-            onClick={handleExportReport}
+            onClick={() => handleExportReport()}
             className="shrink-0 text-xs text-[#9EE832] border border-[#9EE832]/40 hover:border-[#9EE832] rounded-lg px-3 py-1.5 transition-colors"
           >
-            Exportar reporte
+            Exportar PDF
           </button>
         </div>
       </div>
@@ -268,6 +263,32 @@ export default function ParcelDetailPage() {
           </div>
         )}
 
+        {selectedReport && selectedReport.analysis_id !== latest?.analysis_id && (
+          <div className="bg-field rounded-2xl border border-[#C5E89A] shadow-sm p-5 mb-5">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <h2 className="font-semibold text-orbit">Reporte histórico seleccionado</h2>
+                <p className="text-xs text-[#A8A09A]">{selectedReport.date_start} – {selectedReport.date_end}</p>
+              </div>
+              <button
+                onClick={() => handleExportReport(selectedReport)}
+                className="rounded-lg border border-[#9EE832] text-[#3D6B0C] px-3 py-1.5 text-xs font-semibold hover:bg-[#E8F7D4] transition-colors"
+              >
+                Exportar PDF
+              </button>
+            </div>
+            <p className="text-sm text-[#3D3028] leading-relaxed mb-4">{selectedReport.resumen}</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {['NDVI', 'NDMI', 'NDRE', 'SAVI'].map((idx) => (
+                <div key={idx} className="rounded-xl bg-soil px-3 py-2">
+                  <p className="text-[10px] font-bold text-[#A8A09A] uppercase tracking-widest">{idx}</p>
+                  <p className="font-bold text-orbit">{selectedReport.metrics?.[idx]?.toFixed(2) ?? '—'}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Time series */}
         {series && Object.keys(series).some((k) => series[k]?.length > 0) && (
           <div className="bg-field rounded-2xl border border-[#E4DFD4] shadow-sm p-5 mb-5">
@@ -284,7 +305,7 @@ export default function ParcelDetailPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E4DFD4]">
-                    {['Período', 'NDVI', 'NDMI', 'NDRE', 'SAVI', 'Estado', 'Prioridad'].map((h) => (
+                    {['Período', 'NDVI', 'NDMI', 'NDRE', 'SAVI', 'Estado', 'Prioridad', 'Reporte'].map((h) => (
                       <th key={h} className="text-left text-[11px] font-bold text-[#A8A09A] uppercase tracking-widest pb-2 pr-4">{h}</th>
                     ))}
                   </tr>
@@ -300,6 +321,14 @@ export default function ParcelDetailPage() {
                       ))}
                       <td className="py-2.5 pr-4"><StatusBadge value={a.estado_cultivo} /></td>
                       <td className="py-2.5"><StatusBadge value={a.prioridad} /></td>
+                      <td className="py-2.5">
+                        <button
+                          onClick={() => setSelectedReportId(a.analysis_id)}
+                          className="rounded-lg border border-[#D4C9B0] px-2 py-1 text-xs text-[#6B6259] hover:border-[#9EE832] hover:text-[#3D6B0C] transition-colors"
+                        >
+                          Ver
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

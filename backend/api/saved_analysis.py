@@ -76,9 +76,11 @@ def _compact_analysis(item, previous=None):
         "prioridad": interpretation.get("prioridad"),
         "confianza": interpretation.get("confianza"),
         "resumen": interpretation.get("resumen"),
+        "diagnostico_indices": interpretation.get("diagnostico_indices", {}),
         "recomendaciones": interpretation.get("recomendaciones", []),
         "acciones_inmediatas": interpretation.get("acciones_inmediatas", []),
         "plan_temporada": interpretation.get("plan_temporada", []),
+        "datos_adicionales_recomendados": interpretation.get("datos_adicionales_recomendados", []),
         "limitaciones": interpretation.get("limitaciones"),
     }
 

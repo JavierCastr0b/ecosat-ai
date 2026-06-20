@@ -34,6 +34,8 @@ export default function CollectionDetailPage() {
     date_start: '2025-01-01',
     date_end: '2025-06-01',
     indices: ['NDVI', 'NDMI', 'NDRE', 'SAVI'],
+    scope: 'all',
+    parcel_ids: [],
   })
   const [submitting, setSubmitting] = useState(false)
   const [activeAnalysis, setActiveAnalysis] = useState(null)
@@ -108,11 +110,17 @@ export default function CollectionDetailPage() {
 
   async function handleSubmitAnalysis(e) {
     e.preventDefault()
+    if (analysisForm.scope === 'selected' && analysisForm.parcel_ids.length === 0) {
+      setError('Selecciona al menos un lote para analizar.')
+      return
+    }
     setSubmitting(true)
     setError('')
     try {
       const data = await submitAnalysis({
-        collection_id: id,
+        ...(analysisForm.scope === 'all'
+          ? { collection_id: id }
+          : { parcel_ids: analysisForm.parcel_ids }),
         date_start: analysisForm.date_start,
         date_end: analysisForm.date_end,
         indices: analysisForm.indices,
@@ -233,6 +241,56 @@ export default function CollectionDetailPage() {
               </div>
             </div>
             <div className="mb-5">
+              <label className="block text-sm font-medium text-[#6B6259] mb-2">Alcance del análisis</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+                {[
+                  { value: 'all', label: 'Todos los lotes', help: `${parcels.length} lote${parcels.length !== 1 ? 's' : ''}` },
+                  { value: 'selected', label: 'Elegir lotes', help: `${analysisForm.parcel_ids.length} seleccionado${analysisForm.parcel_ids.length !== 1 ? 's' : ''}` },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setAnalysisForm({ ...analysisForm, scope: option.value })}
+                    className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                      analysisForm.scope === option.value
+                        ? 'border-[#9EE832] bg-[#E8F7D4]'
+                        : 'border-[#D4C9B0] bg-soil hover:border-[#9EE832]'
+                    }`}
+                  >
+                    <p className="text-sm font-bold text-orbit">{option.label}</p>
+                    <p className="text-xs text-[#6B6259] mt-0.5">{option.help}</p>
+                  </button>
+                ))}
+              </div>
+
+              {analysisForm.scope === 'selected' && (
+                <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {parcels.map((parcel) => {
+                    const checked = analysisForm.parcel_ids.includes(parcel.parcel_id)
+                    return (
+                      <label key={parcel.parcel_id} className={`rounded-xl border px-3 py-2 cursor-pointer transition-all ${
+                        checked ? 'border-[#9EE832] bg-[#E8F7D4]' : 'border-[#D4C9B0] bg-field hover:border-[#9EE832]'
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(event) => {
+                            setAnalysisForm((prev) => ({
+                              ...prev,
+                              parcel_ids: event.target.checked
+                                ? [...prev.parcel_ids, parcel.parcel_id]
+                                : prev.parcel_ids.filter((id) => id !== parcel.parcel_id),
+                            }))
+                          }}
+                          className="mr-2"
+                        />
+                        <span className="text-sm font-semibold text-orbit">{parcel.name}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+
               <label className="block text-sm font-medium text-[#6B6259] mb-2">Índices espectrales</label>
               <div className="flex flex-wrap gap-2">
                 {['NDVI', 'NDMI', 'NDRE', 'SAVI'].map((idx) => (
@@ -257,7 +315,13 @@ export default function CollectionDetailPage() {
                 className="rounded-xl border border-[#D4C9B0] bg-field text-[#6B6259] hover:text-orbit text-sm px-4 py-2 transition-colors">
                 Cancelar
               </button>
-              <button type="submit" disabled={submitting || analysisForm.indices.length === 0}
+              <button
+                type="submit"
+                disabled={
+                  submitting ||
+                  analysisForm.indices.length === 0 ||
+                  (analysisForm.scope === 'selected' && analysisForm.parcel_ids.length === 0)
+                }
                 className="flex items-center gap-2 rounded-xl font-semibold text-sm px-5 py-2 transition-all disabled:opacity-60 hover:brightness-105"
                 style={{ background: '#9EE832', color: '#080C10' }}>
                 {submitting ? <><Spinner size="sm" /> Enviando...</> : 'Iniciar análisis'}
