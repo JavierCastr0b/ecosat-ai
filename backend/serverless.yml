@@ -1,0 +1,369 @@
+org: geraldocolchado          # <-- pon tu org de Serverless Dashboard
+service: ecosat-backend
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.12
+  region: us-east-1
+  memorySize: 1024
+  timeout: 30
+  stage: ${opt:stage, 'dev'}
+  # En Learner Lab NO se pueden crear roles IAM: usamos el LabRole que ya existe.
+  # ${aws:accountId} se resuelve solo, asi sobrevive si el account ID cambia de sesion.
+  iam:
+    role: arn:aws:iam::${aws:accountId}:role/LabRole
+  environment:
+    JOBS_TABLE: ${self:service}-jobs-${sls:stage}
+    USERS_TABLE: ${self:service}-users-${sls:stage}
+    AUTH_TOKENS_TABLE: ${self:service}-auth-tokens-${sls:stage}
+    COLLECTIONS_TABLE: ${self:service}-collections-${sls:stage}
+    PARCELS_TABLE: ${self:service}-parcels-${sls:stage}
+    PARCEL_ANALYSES_TABLE: ${self:service}-parcel-analyses-${sls:stage}
+    INPUTS_BUCKET: ${self:service}-inputs-${sls:stage}-${aws:accountId}
+    SATELLITE_QUEUE_URL: !Ref SatelliteQueue
+    LLM_QUEUE_URL: !Ref LlmQueue
+    GROQ_API_KEY: ${env:GROQ_API_KEY}
+    GEE_PROJECT: ${env:GEE_PROJECT}
+    GEE_SERVICE_ACCOUNT: ${env:GEE_SERVICE_ACCOUNT}
+    GEE_SERVICE_ACCOUNT_JSON: ${env:GEE_SERVICE_ACCOUNT_JSON}
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  corsConfig: &corsConfig
+    origin: '*'
+    headers:
+      - Content-Type
+      - Authorization
+      - X-Tenant-Id
+      - X-Amz-Date
+      - X-Api-Key
+      - X-Amz-Security-Token
+  pythonRequirements:
+    # ponlo en 'non-linux' (o true) cuando agregues rasterio/earthengine al worker
+    dockerizePip: false
+    slim: true
+
+functions:
+  authRegister:
+    handler: api/auth.register
+    events:
+      - http:
+          path: /auth/register
+          method: post
+          cors: *corsConfig
+
+  authLogin:
+    handler: api/auth.login
+    events:
+      - http:
+          path: /auth/login
+          method: post
+          cors: *corsConfig
+
+  authMe:
+    handler: api/auth.me
+    events:
+      - http:
+          path: /auth/me
+          method: get
+          cors: *corsConfig
+
+  authLogout:
+    handler: api/auth.logout
+    events:
+      - http:
+          path: /auth/logout
+          method: post
+          cors: *corsConfig
+
+  listCollections:
+    handler: api/collections.list_collections
+    events:
+      - http:
+          path: /collections
+          method: get
+          cors: *corsConfig
+
+  createCollection:
+    handler: api/collections.create_collection
+    events:
+      - http:
+          path: /collections
+          method: post
+          cors: *corsConfig
+
+  updateCollection:
+    handler: api/collections.update_collection
+    events:
+      - http:
+          path: /collections/{collection_id}
+          method: put
+          cors: *corsConfig
+
+  deleteCollection:
+    handler: api/collections.delete_collection
+    events:
+      - http:
+          path: /collections/{collection_id}
+          method: delete
+          cors: *corsConfig
+
+  listParcels:
+    handler: api/parcels.list_parcels
+    events:
+      - http:
+          path: /parcels
+          method: get
+          cors: *corsConfig
+
+  createParcel:
+    handler: api/parcels.create_parcel
+    events:
+      - http:
+          path: /parcels
+          method: post
+          cors: *corsConfig
+
+  getParcel:
+    handler: api/parcels.get_parcel
+    events:
+      - http:
+          path: /parcels/{parcel_id}
+          method: get
+          cors: *corsConfig
+
+  updateParcel:
+    handler: api/parcels.update_parcel
+    events:
+      - http:
+          path: /parcels/{parcel_id}
+          method: put
+          cors: *corsConfig
+
+  deleteParcel:
+    handler: api/parcels.delete_parcel
+    events:
+      - http:
+          path: /parcels/{parcel_id}
+          method: delete
+          cors: *corsConfig
+
+  createSavedAnalysis:
+    handler: api/saved_analysis.create_saved_analysis
+    events:
+      - http:
+          path: /analysis/saved
+          method: post
+          cors: *corsConfig
+
+  listParcelAnalyses:
+    handler: api/saved_analysis.list_parcel_analyses
+    events:
+      - http:
+          path: /parcels/{parcel_id}/analyses
+          method: get
+          cors: *corsConfig
+
+  # Recibe la solicitud del frontend, crea el job y hace fan-out:
+  # 1 mensaje por zona hacia la cola satelital (lotes de 20-30)
+  submit:
+    handler: api/submit.handler
+    events:
+      - http:
+          path: /analysis
+          method: post
+          cors: *corsConfig
+
+  # El frontend hace polling de este endpoint para la barra de progreso
+  status:
+    handler: api/status.handler
+    events:
+      - http:
+          path: /analysis/{id}/status
+          method: get
+          cors: *corsConfig
+
+  # Consume la cola satelital, consulta Sentinel-2 y calcula indices
+  satelliteWorker:
+    handler: workers/satellite.handler
+    timeout: 300
+    events:
+      - sqs:
+          arn: !GetAtt SatelliteQueue.Arn
+          batchSize: 5
+          functionResponseType: ReportBatchItemFailures
+
+  # Consume la cola del LLM y llama a Groq.
+  # reservedConcurrency = throttle para no reventar el rate limit de Groq.
+  # Si Learner Lab se queja del limite de concurrencia, quita esta linea
+  # y controla el ritmo solo con batchSize.
+  llmWorker:
+    handler: workers/llm.handler
+    timeout: 60
+    reservedConcurrency: 2
+    events:
+      - sqs:
+          arn: !GetAtt LlmQueue.Arn
+          batchSize: 5
+          functionResponseType: ReportBatchItemFailures
+
+resources:
+  Resources:
+    JobsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.JOBS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: job_id
+            AttributeType: S
+          - AttributeName: analysis_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: job_id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        GlobalSecondaryIndexes:
+          - IndexName: analysis_id-index
+            KeySchema:
+              - AttributeName: analysis_id
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.USERS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: tenant_id
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenant_id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        GlobalSecondaryIndexes:
+          - IndexName: email-index
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    AuthTokensTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.AUTH_TOKENS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: tenant_id
+            AttributeType: S
+          - AttributeName: token_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenant_id
+            KeyType: HASH
+          - AttributeName: token_id
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        TimeToLiveSpecification:
+          AttributeName: expires_at
+          Enabled: true
+
+    CollectionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.COLLECTIONS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: tenant_id
+            AttributeType: S
+          - AttributeName: collection_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenant_id
+            KeyType: HASH
+          - AttributeName: collection_id
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+
+    ParcelsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.PARCELS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: tenant_id
+            AttributeType: S
+          - AttributeName: parcel_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenant_id
+            KeyType: HASH
+          - AttributeName: parcel_id
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+
+    ParcelAnalysesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.PARCEL_ANALYSES_TABLE}
+        AttributeDefinitions:
+          - AttributeName: tenant_id
+            AttributeType: S
+          - AttributeName: analysis_record_id
+            AttributeType: S
+          - AttributeName: parcel_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenant_id
+            KeyType: HASH
+          - AttributeName: analysis_record_id
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        GlobalSecondaryIndexes:
+          - IndexName: tenant-parcel-index
+            KeySchema:
+              - AttributeName: tenant_id
+                KeyType: HASH
+              - AttributeName: parcel_id
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
+    InputsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.INPUTS_BUCKET}
+
+    # --- Cola satelital + su DLQ (no se pierde data) ---
+    SatelliteQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-satellite-${sls:stage}
+        VisibilityTimeout: 1800   # 6x el timeout del worker (300s)
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt SatelliteDLQ.Arn
+          maxReceiveCount: 3
+    SatelliteDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-satellite-dlq-${sls:stage}
+        MessageRetentionPeriod: 1209600   # 14 dias
+
+    # --- Cola del LLM + su DLQ (manejo del rate limit de Groq) ---
+    LlmQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-llm-${sls:stage}
+        VisibilityTimeout: 360    # 6x el timeout del worker (60s)
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt LlmDLQ.Arn
+          maxReceiveCount: 3
+    LlmDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-llm-dlq-${sls:stage}
+        MessageRetentionPeriod: 1209600
