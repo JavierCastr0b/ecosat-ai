@@ -2,6 +2,7 @@ org: javiercastro
 service: ecosat-backend
 
 frameworkVersion: '3'
+useDotenv: true
 
 provider:
   name: aws
@@ -27,9 +28,6 @@ provider:
     GEE_PROJECT: ${env:GEE_PROJECT}
     GEE_SERVICE_ACCOUNT: ${env:GEE_SERVICE_ACCOUNT}
     GEE_SERVICE_ACCOUNT_JSON: ${env:GEE_SERVICE_ACCOUNT_JSON}
-
-plugins:
-  - serverless-python-requirements
 
 custom:
   corsConfig: &corsConfig
