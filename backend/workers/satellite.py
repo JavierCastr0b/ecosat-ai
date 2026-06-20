@@ -91,33 +91,48 @@ def _generar_visuales(region, compuesto):
     guardan con el reporte. Si GEE no puede generar alguna imagen, no bloquea
     el calculo de indices.
     """
-    visuales = {}
+    visuales = {
+        "status": "PENDING",
+        "source": "GOOGLE_EARTH_ENGINE",
+    }
+    errors = []
     try:
-        rgb = compuesto.select(["B4", "B3", "B2"]).visualize(
+        rgb = compuesto.select(["B4", "B3", "B2"]).clip(region).visualize(
             min=0,
             max=3000,
             gamma=1.2,
         )
         visuales["rgb_thumbnail_url"] = rgb.clip(region).getThumbURL({
             **VIS_PARAMS,
-            "region": region,
+            "region": region.bounds().getInfo()["coordinates"],
         })
     except Exception as e:
-        print(f"No se pudo generar miniatura RGB: {e}")
+        error = f"RGB: {e}"
+        errors.append(error)
+        print(f"No se pudo generar miniatura RGB: {error}")
 
     try:
         ndvi = compuesto.normalizedDifference(["B8", "B4"]).rename("NDVI")
-        ndvi_visual = ndvi.visualize(
+        ndvi_visual = ndvi.clip(region).visualize(
             min=0,
             max=0.85,
             palette=["#8C2415", "#F6C343", "#9EE832", "#1F7A1F"],
         )
         visuales["ndvi_thumbnail_url"] = ndvi_visual.clip(region).getThumbURL({
             **VIS_PARAMS,
-            "region": region,
+            "region": region.bounds().getInfo()["coordinates"],
         })
     except Exception as e:
-        print(f"No se pudo generar miniatura NDVI: {e}")
+        error = f"NDVI: {e}"
+        errors.append(error)
+        print(f"No se pudo generar miniatura NDVI: {error}")
+
+    if visuales.get("rgb_thumbnail_url") or visuales.get("ndvi_thumbnail_url"):
+        visuales["status"] = "AVAILABLE"
+    else:
+        visuales["status"] = "FAILED"
+    if errors:
+        visuales["errors"] = errors
 
     return visuales
 

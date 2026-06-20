@@ -70,9 +70,7 @@ export default function ParcelDetailPage() {
   const series = summary?.series
   const area = parcelArea(parcel)
   const selectedReport = analyses.find((item) => item.analysis_id === selectedReportId) ?? latest
-  const visualReports = analyses.filter((item) => (
-    item.visual_assets?.rgb_thumbnail_url || item.visual_assets?.ndvi_thumbnail_url
-  ))
+  const visualReports = analyses
 
   function handleExportReport(report = selectedReport) {
     openReportPdf({
@@ -216,15 +214,17 @@ export default function ParcelDetailPage() {
               <p className="text-xs text-[#6B6259] mt-1">Evolución visual guardada por cada análisis realizado.</p>
             </div>
             <span className="rounded-full bg-soil px-3 py-1 text-xs font-semibold text-[#6B6259]">
-              {visualReports.length} captura{visualReports.length !== 1 ? 's' : ''}
+              {visualReports.length} fecha{visualReports.length !== 1 ? 's' : ''}
             </span>
           </div>
 
           {visualReports.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {visualReports.map((report) => {
-                const rgbUrl = report.visual_assets?.rgb_thumbnail_url
-                const ndviUrl = report.visual_assets?.ndvi_thumbnail_url
+                const assets = report.visual_assets || {}
+                const rgbUrl = assets.rgb_thumbnail_url
+                const ndviUrl = assets.ndvi_thumbnail_url
+                const hasImage = Boolean(rgbUrl || ndviUrl)
                 return (
                   <button
                     key={report.analysis_record_id ?? report.analysis_id}
@@ -253,10 +253,22 @@ export default function ParcelDetailPage() {
                       </div>
                     </div>
                     <div className="p-3 bg-field">
-                      <p className="text-xs font-bold text-orbit">{report.date_start} – {report.date_end}</p>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-bold text-orbit">{report.date_start} – {report.date_end}</p>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          hasImage ? 'bg-[#E8F7D4] text-[#3D6B0C]' : 'bg-[#FDE8E3] text-[#8C2415]'
+                        }`}>
+                          {hasImage ? 'Guardada' : 'Sin captura'}
+                        </span>
+                      </div>
                       <p className="text-[11px] text-[#A8A09A] mt-1">
                         RGB real · NDVI visual · {report.estado_cultivo ?? 'sin estado'}
                       </p>
+                      {!hasImage && (
+                        <p className="text-[11px] text-[#8C2415] mt-2">
+                          La imagen se generará en nuevos análisis si Earth Engine devuelve miniatura.
+                        </p>
+                      )}
                     </div>
                   </button>
                 )
