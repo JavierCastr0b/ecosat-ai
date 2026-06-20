@@ -24,6 +24,9 @@ sqs = boto3.client("sqs")
 s3 = boto3.client("s3")
 
 
+PRIORITY_SCORE = {"alta": 3, "media": 2, "baja": 1}
+
+
 def _metric_means(indices_stats):
     return {
         index_name: values.get("mean")
@@ -32,7 +35,28 @@ def _metric_means(indices_stats):
     }
 
 
-def _compact_analysis(item):
+def _metric_trend(current, previous):
+    if not current or not previous:
+        return {}
+
+    trend = {}
+    current_metrics = _metric_means(current.get("indices_stats"))
+    previous_metrics = _metric_means(previous.get("indices_stats"))
+    for index_name, value in current_metrics.items():
+        old_value = previous_metrics.get(index_name)
+        if value is None or old_value in (None, 0):
+            continue
+        delta = value - old_value
+        pct = (delta / abs(old_value)) * 100
+        trend[index_name] = {
+            "delta": delta,
+            "percent": pct,
+            "direction": "sube" if delta > 0 else "baja" if delta < 0 else "estable",
+        }
+    return trend
+
+
+def _compact_analysis(item, previous=None):
     interpretation = item.get("interpretacion_ia") or {}
     return {
         "analysis_record_id": item.get("analysis_record_id"),
@@ -45,6 +69,7 @@ def _compact_analysis(item):
         "date_end": item.get("date_end"),
         "created_at": item.get("created_at"),
         "metrics": _metric_means(item.get("indices_stats")),
+        "trend": _metric_trend(item, previous),
         "estado_cultivo": interpretation.get("estado_cultivo"),
         "humedad": interpretation.get("humedad"),
         "nutricion": interpretation.get("nutricion"),
@@ -173,6 +198,9 @@ def create_saved_analysis(event, context):
                 "tenant_id": auth["tenant_id"],
                 "parcel_id": parcel["parcel_id"],
                 "collection_id": parcel.get("collection_id"),
+                "crop_type": parcel.get("crop_type"),
+                "area_ha": json_ready(parcel.get("area_ha")),
+                "area_m2": json_ready(parcel.get("area_m2")),
                 "zona": zone_name,
                 "geometry": geometry,
                 "indices": indices,
@@ -217,12 +245,16 @@ def list_parcel_analyses(event, context):
     if limit > 0:
         analyses = analyses[:limit]
     if compact:
+        compact_items = [
+            _compact_analysis(item, analyses[index + 1] if index + 1 < len(analyses) else None)
+            for index, item in enumerate(analyses)
+        ]
         return response(200, {
             "parcel_id": parcel_id,
             "total": len(analyses),
-            "latest": _compact_analysis(analyses[0]) if analyses else None,
+            "latest": compact_items[0] if compact_items else None,
             "series": _history_series(analyses),
-            "analyses": [_compact_analysis(item) for item in analyses],
+            "analyses": compact_items,
         })
     return response(200, {"analyses": analyses})
 
@@ -248,9 +280,37 @@ def get_parcel_summary(event, context):
     return response(200, {
         "parcel_id": parcel_id,
         "has_analysis": bool(analyses),
-        "latest": _compact_analysis(analyses[0]) if analyses else None,
+        "latest": _compact_analysis(analyses[0], analyses[1] if len(analyses) > 1 else None) if analyses else None,
         "series": _history_series(recent),
     })
+
+
+def _collection_rankings(summaries):
+    analyzed = [item for item in summaries if item.get("latest")]
+    by_priority = sorted(
+        analyzed,
+        key=lambda item: PRIORITY_SCORE.get(item["latest"].get("prioridad"), 0),
+        reverse=True,
+    )
+    by_water_stress = sorted(
+        analyzed,
+        key=lambda item: (item["latest"].get("metrics") or {}).get("NDMI", 999),
+    )
+    by_vigor = sorted(
+        analyzed,
+        key=lambda item: (item["latest"].get("metrics") or {}).get("NDVI", -999),
+        reverse=True,
+    )
+    by_nutrition = sorted(
+        analyzed,
+        key=lambda item: (item["latest"].get("metrics") or {}).get("NDRE", 999),
+    )
+    return {
+        "prioridad": by_priority[:5],
+        "estres_hidrico": by_water_stress[:5],
+        "mejor_vigor": by_vigor[:5],
+        "nutricion_baja": by_nutrition[:5],
+    }
 
 
 def get_collection_summary(event, context):
@@ -277,7 +337,7 @@ def get_collection_summary(event, context):
             key=lambda item: item.get("created_at", ""),
             reverse=True,
         )
-        latest = _compact_analysis(analyses[0]) if analyses else None
+        latest = _compact_analysis(analyses[0], analyses[1] if len(analyses) > 1 else None) if analyses else None
         priority = (latest or {}).get("prioridad") or "sin_datos"
         if priority not in priority_counts:
             priority = "sin_datos"
@@ -286,6 +346,8 @@ def get_collection_summary(event, context):
             "parcel_id": parcel["parcel_id"],
             "name": parcel.get("name"),
             "crop_type": parcel.get("crop_type"),
+            "area_m2": parcel.get("area_m2"),
+            "area_ha": parcel.get("area_ha"),
             "latest": latest,
         })
 
@@ -293,5 +355,6 @@ def get_collection_summary(event, context):
         "collection_id": collection_id,
         "total_parcels": len(parcels),
         "priority_counts": priority_counts,
+        "rankings": _collection_rankings(summaries),
         "parcels": summaries,
     })

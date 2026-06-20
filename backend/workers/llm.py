@@ -10,6 +10,7 @@ add_vendor_path()
 
 import boto3
 from groq import Groq, RateLimitError
+from shared.crop_knowledge import knowledge_for_crop
 
 # Modelo de Groq. Revisa los IDs vigentes en https://console.groq.com/docs/models
 # porque rotan cada cierto tiempo.
@@ -64,14 +65,19 @@ exacta, sin texto adicional fuera del JSON:
 }"""
 
 
-def interpretar_indices(zona, indices):
+def interpretar_indices(zona, indices, contexto=None):
     """Llama a Groq y devuelve la interpretacion agricola como dict.
 
     Funcion pura: solo necesita la API de Groq, NO toca AWS.
     Por eso se puede testear en local sin credenciales.
     """
+    contexto = contexto or {}
+    crop_type = contexto.get("crop_type")
     user_prompt = (
         f"Zona analizada: {zona}\n"
+        f"Contexto del lote: {json.dumps(contexto, ensure_ascii=False)}\n"
+        f"Conocimiento agronomico de apoyo: "
+        f"{json.dumps(knowledge_for_crop(crop_type), ensure_ascii=False)}\n"
         f"Indices calculados (estadisticas): {json.dumps(indices)}\n\n"
         f"Interpreta estos valores y devuelve el JSON solicitado."
     )
@@ -110,7 +116,14 @@ def handler(event, context):
         message_id = record.get("messageId")
         try:
             msg = json.loads(record["body"])
-            interpretacion = interpretar_indices(msg["zona"], msg["indices"])
+            contexto = {
+                "crop_type": msg.get("crop_type"),
+                "area_ha": msg.get("area_ha"),
+                "area_m2": msg.get("area_m2"),
+                "date_start": msg.get("date_start"),
+                "date_end": msg.get("date_end"),
+            }
+            interpretacion = interpretar_indices(msg["zona"], msg["indices"], contexto)
 
             table.update_item(
                 Key={"job_id": msg["job_id"]},

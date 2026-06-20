@@ -72,11 +72,13 @@ def calcular_indices(geometry, indices, date_start, date_end):
             index_image = compuesto.normalizedDifference([a, b]).rename(idx)
         elif idx == "SAVI":
             # SAVI corrige el efecto del suelo visible en cultivos jovenes o ralos.
+            # Sentinel-2 SR viene escalado por 10000 en Earth Engine; para SAVI
+            # hay que usar reflectancia 0-1 porque el factor L=0.5 esta en esa escala.
             index_image = compuesto.expression(
                 "((nir - red) / (nir + red + 0.5)) * 1.5",
                 {
-                    "nir": compuesto.select("B8"),
-                    "red": compuesto.select("B4"),
+                    "nir": compuesto.select("B8").multiply(0.0001),
+                    "red": compuesto.select("B4").multiply(0.0001),
                 },
             ).rename(idx)
         else:
@@ -139,6 +141,9 @@ def handler(event, context):
                     "tenant_id": msg.get("tenant_id"),
                     "parcel_id": msg.get("parcel_id"),
                     "collection_id": msg.get("collection_id"),
+                    "crop_type": msg.get("crop_type"),
+                    "area_ha": msg.get("area_ha"),
+                    "area_m2": msg.get("area_m2"),
                     "zona": msg["zona"],
                     "indices": indices_stats,
                     "date_start": msg.get("date_start"),

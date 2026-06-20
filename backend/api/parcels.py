@@ -31,6 +31,18 @@ def _validate_geometry(geometry):
     return None
 
 
+def _clean_area(value):
+    if value in (None, ""):
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if numeric < 0:
+        return None
+    return numeric
+
+
 def list_parcels(event, context):
     auth, error = require_auth(event)
     if error:
@@ -86,6 +98,12 @@ def create_parcel(event, context):
         "created_at": now,
         "updated_at": now,
     }
+    area_m2 = _clean_area(body.get("area_m2"))
+    area_ha = _clean_area(body.get("area_ha"))
+    if area_m2 is not None:
+        item["area_m2"] = to_decimal(area_m2)
+    if area_ha is not None:
+        item["area_ha"] = to_decimal(area_ha)
     table("PARCELS_TABLE").put_item(Item=item)
     return response(201, item)
 
@@ -119,6 +137,8 @@ def update_parcel(event, context):
         "geometry": "geometry",
         "crop_type": "crop_type",
         "notes": "notes",
+        "area_m2": "area_m2",
+        "area_ha": "area_ha",
     }
     updates = []
     names = {}
@@ -139,6 +159,11 @@ def update_parcel(event, context):
             value = to_decimal(value)
         if field in {"crop_type", "notes"}:
             value = (value or "").strip()
+        if field in {"area_m2", "area_ha"}:
+            value = _clean_area(value)
+            if value is None:
+                continue
+            value = to_decimal(value)
 
         placeholder_name = f"#{attr_name}"
         placeholder_value = f":{attr_name}"
