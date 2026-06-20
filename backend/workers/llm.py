@@ -150,6 +150,7 @@ def handler(event, context):
                     "date_start": msg.get("date_start"),
                     "date_end": msg.get("date_end"),
                     "indices_stats": _to_decimal(msg["indices"]),
+                    "visual_assets": msg.get("visual_assets") or {},
                     "interpretacion_ia": interpretacion,
                     "created_at": _now_iso(),
                 })

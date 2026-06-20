@@ -148,10 +148,10 @@ export default function NewParcelPage() {
 
               {area && (
                 <div className="rounded-xl bg-[#F4FAEA] border border-[#C5E89A] px-4 py-3">
-                  <p className="text-[11px] font-bold text-[#5B8A1A] uppercase tracking-widest">Área estimada</p>
+                  <p className="text-[11px] font-bold text-[#5B8A1A] uppercase tracking-widest">Área estimada (m²)</p>
                   <p className="text-2xl font-bold text-orbit mt-1">{formatArea(area.area_ha, area.area_m2)}</p>
                   <p className="text-xs text-[#6B6259] mt-1">
-                    Calculada desde el polígono dibujado. Úsala como referencia para riego y fertilización.
+                    Equivale a {Number(area.area_ha).toFixed(2)} ha. Úsala como referencia para riego y fertilización.
                   </p>
                 </div>
               )}

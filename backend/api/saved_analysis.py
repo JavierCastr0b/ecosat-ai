@@ -68,6 +68,7 @@ def _compact_analysis(item, previous=None):
         "date_start": item.get("date_start"),
         "date_end": item.get("date_end"),
         "created_at": item.get("created_at"),
+        "visual_assets": item.get("visual_assets") or {},
         "metrics": _metric_means(item.get("indices_stats")),
         "trend": _metric_trend(item, previous),
         "estado_cultivo": interpretation.get("estado_cultivo"),

@@ -70,6 +70,9 @@ export default function ParcelDetailPage() {
   const series = summary?.series
   const area = parcelArea(parcel)
   const selectedReport = analyses.find((item) => item.analysis_id === selectedReportId) ?? latest
+  const visualReports = analyses.filter((item) => (
+    item.visual_assets?.rgb_thumbnail_url || item.visual_assets?.ndvi_thumbnail_url
+  ))
 
   function handleExportReport(report = selectedReport) {
     openReportPdf({
@@ -138,7 +141,7 @@ export default function ParcelDetailPage() {
             {area && (
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="rounded-xl bg-soil px-3 py-2">
-                  <p className="text-[10px] font-bold text-[#A8A09A] uppercase tracking-widest">Área</p>
+                  <p className="text-[10px] font-bold text-[#A8A09A] uppercase tracking-widest">Área (m²)</p>
                   <p className="text-sm font-bold text-orbit">{formatArea(area.area_ha, area.area_m2)}</p>
                 </div>
                 <div className="rounded-xl bg-soil px-3 py-2">
@@ -203,6 +206,68 @@ export default function ParcelDetailPage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Satellite gallery */}
+        <div className="bg-field rounded-2xl border border-[#E4DFD4] shadow-sm p-5 mb-5">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <h2 className="font-semibold text-orbit">Galería satelital del lote</h2>
+              <p className="text-xs text-[#6B6259] mt-1">Evolución visual guardada por cada análisis realizado.</p>
+            </div>
+            <span className="rounded-full bg-soil px-3 py-1 text-xs font-semibold text-[#6B6259]">
+              {visualReports.length} captura{visualReports.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          {visualReports.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {visualReports.map((report) => {
+                const rgbUrl = report.visual_assets?.rgb_thumbnail_url
+                const ndviUrl = report.visual_assets?.ndvi_thumbnail_url
+                return (
+                  <button
+                    key={report.analysis_record_id ?? report.analysis_id}
+                    type="button"
+                    onClick={() => setSelectedReportId(report.analysis_id)}
+                    className={`text-left rounded-2xl border shadow-sm overflow-hidden transition-all hover:shadow-md ${
+                      selectedReport?.analysis_id === report.analysis_id
+                        ? 'border-[#9EE832] ring-2 ring-[#9EE832]/30'
+                        : 'border-[#E4DFD4] hover:border-[#C5E89A]'
+                    }`}
+                  >
+                    <div className="grid grid-cols-2 bg-soil">
+                      <div className="aspect-[4/3] overflow-hidden">
+                        {rgbUrl ? (
+                          <img src={rgbUrl} alt={`Imagen RGB del lote ${report.date_end}`} className="h-full w-full object-cover" loading="lazy" />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-xs text-[#A8A09A]">RGB no disponible</div>
+                        )}
+                      </div>
+                      <div className="aspect-[4/3] overflow-hidden border-l border-white/70">
+                        {ndviUrl ? (
+                          <img src={ndviUrl} alt={`Mapa NDVI del lote ${report.date_end}`} className="h-full w-full object-cover" loading="lazy" />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-xs text-[#A8A09A]">NDVI no disponible</div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-field">
+                      <p className="text-xs font-bold text-orbit">{report.date_start} – {report.date_end}</p>
+                      <p className="text-[11px] text-[#A8A09A] mt-1">
+                        RGB real · NDVI visual · {report.estado_cultivo ?? 'sin estado'}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-[#D4C9B0] bg-soil px-4 py-8 text-center">
+              <p className="text-sm font-semibold text-orbit">Aún no hay capturas satelitales guardadas</p>
+              <p className="text-xs text-[#6B6259] mt-1">Lanza un nuevo análisis para guardar la imagen RGB y el mapa NDVI del lote.</p>
+            </div>
+          )}
         </div>
 
         {/* AI Analysis card */}

@@ -82,6 +82,8 @@ def handler(event, context):
                 zona[field] = item[field]
         if "indices_stats" in item:
             zona["indices_stats"] = _decimal_to_float(item["indices_stats"])
+        if "visual_assets" in item:
+            zona["visual_assets"] = item["visual_assets"]
         if "interpretacion_ia" in item:
             zona["interpretacion_ia"] = item["interpretacion_ia"]
         zonas.append(zona)

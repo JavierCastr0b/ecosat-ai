@@ -49,8 +49,7 @@ export function formatArea(areaHa, areaM2) {
   const hectares = Number(areaHa ?? (areaM2 != null ? areaM2 / 10000 : NaN))
   const meters = Number(areaM2 ?? (Number.isFinite(hectares) ? hectares * 10000 : NaN))
 
-  if (!Number.isFinite(hectares)) return 'Área no disponible'
-  if (hectares >= 1) return `${hectares.toFixed(2)} ha`
+  if (!Number.isFinite(meters)) return 'Área no disponible'
   return `${Math.round(meters).toLocaleString('es-PE')} m²`
 }
 

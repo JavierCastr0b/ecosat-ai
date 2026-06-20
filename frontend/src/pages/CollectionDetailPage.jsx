@@ -190,7 +190,7 @@ export default function CollectionDetailPage() {
                  'Análisis en progreso...'}
               </p>
               <p className="text-xs text-[#6B6259] mt-0.5">
-                {activeAnalysis.total_parcelas} lote{activeAnalysis.total_parcelas !== 1 ? 's' : ''} · ID: {activeAnalysis.analysis_id?.slice(0, 8)}...
+                {activeAnalysis.total_parcelas} lote{activeAnalysis.total_parcelas !== 1 ? 's' : ''} en evaluación satelital
               </p>
             </div>
             {['COMPLETED', 'FAILED'].includes(activeAnalysis.status) && (

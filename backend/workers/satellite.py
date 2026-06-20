@@ -18,6 +18,10 @@ INDEX_BANDS = {
 }
 
 _initialized = False
+VIS_PARAMS = {
+    "dimensions": 768,
+    "format": "png",
+}
 
 
 def _ensure_ee():
@@ -48,14 +52,9 @@ def _mask_clouds(image):
     return image.updateMask(cloud.And(cirrus))
 
 
-def calcular_indices(geometry, indices, date_start, date_end):
-    """Consulta Sentinel-2 en GEE y devuelve mean/min/max de cada indice.
-
-    Solo necesita credenciales de GEE, NO toca AWS -> testeable en local.
-    """
+def _sentinel_composite(geometry, date_start, date_end):
     _ensure_ee()
     region = ee.Geometry(geometry)
-
     compuesto = (
         ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
         .filterBounds(region)
@@ -64,24 +63,76 @@ def calcular_indices(geometry, indices, date_start, date_end):
         .map(_mask_clouds)
         .median()
     )
+    return region, compuesto
+
+
+def _index_image(compuesto, idx):
+    if idx in INDEX_BANDS:
+        a, b = INDEX_BANDS[idx]
+        return compuesto.normalizedDifference([a, b]).rename(idx)
+    if idx == "SAVI":
+        # SAVI corrige el efecto del suelo visible en cultivos jovenes o ralos.
+        # Sentinel-2 SR viene escalado por 10000 en Earth Engine; para SAVI
+        # hay que usar reflectancia 0-1 porque el factor L=0.5 esta en esa escala.
+        return compuesto.expression(
+            "((nir - red) / (nir + red + 0.5)) * 1.5",
+            {
+                "nir": compuesto.select("B8").multiply(0.0001),
+                "red": compuesto.select("B4").multiply(0.0001),
+            },
+        ).rename(idx)
+    return None
+
+
+def _generar_visuales(region, compuesto):
+    """Genera miniaturas visuales del lote para la galeria historica.
+
+    Usamos URLs temporales de Earth Engine: son suficientes para la demo y se
+    guardan con el reporte. Si GEE no puede generar alguna imagen, no bloquea
+    el calculo de indices.
+    """
+    visuales = {}
+    try:
+        rgb = compuesto.select(["B4", "B3", "B2"]).visualize(
+            min=0,
+            max=3000,
+            gamma=1.2,
+        )
+        visuales["rgb_thumbnail_url"] = rgb.clip(region).getThumbURL({
+            **VIS_PARAMS,
+            "region": region,
+        })
+    except Exception as e:
+        print(f"No se pudo generar miniatura RGB: {e}")
+
+    try:
+        ndvi = compuesto.normalizedDifference(["B8", "B4"]).rename("NDVI")
+        ndvi_visual = ndvi.visualize(
+            min=0,
+            max=0.85,
+            palette=["#8C2415", "#F6C343", "#9EE832", "#1F7A1F"],
+        )
+        visuales["ndvi_thumbnail_url"] = ndvi_visual.clip(region).getThumbURL({
+            **VIS_PARAMS,
+            "region": region,
+        })
+    except Exception as e:
+        print(f"No se pudo generar miniatura NDVI: {e}")
+
+    return visuales
+
+
+def calcular_indices(geometry, indices, date_start, date_end):
+    """Consulta Sentinel-2 en GEE y devuelve mean/min/max de cada indice.
+
+    Solo necesita credenciales de GEE, NO toca AWS -> testeable en local.
+    """
+    region, compuesto = _sentinel_composite(geometry, date_start, date_end)
 
     resultado = {}
     for idx in indices:
-        if idx in INDEX_BANDS:
-            a, b = INDEX_BANDS[idx]
-            index_image = compuesto.normalizedDifference([a, b]).rename(idx)
-        elif idx == "SAVI":
-            # SAVI corrige el efecto del suelo visible en cultivos jovenes o ralos.
-            # Sentinel-2 SR viene escalado por 10000 en Earth Engine; para SAVI
-            # hay que usar reflectancia 0-1 porque el factor L=0.5 esta en esa escala.
-            index_image = compuesto.expression(
-                "((nir - red) / (nir + red + 0.5)) * 1.5",
-                {
-                    "nir": compuesto.select("B8").multiply(0.0001),
-                    "red": compuesto.select("B4").multiply(0.0001),
-                },
-            ).rename(idx)
-        else:
+        index_image = _index_image(compuesto, idx)
+        if index_image is None:
             continue
 
         stats = index_image.reduceRegion(
@@ -96,6 +147,27 @@ def calcular_indices(geometry, indices, date_start, date_end):
             "max": stats.get(f"{idx}_max"),
         }
     return resultado
+
+
+def analizar_lote(geometry, indices, date_start, date_end):
+    region, compuesto = _sentinel_composite(geometry, date_start, date_end)
+    indices_stats = {}
+    for idx in indices:
+        index_image = _index_image(compuesto, idx)
+        if index_image is None:
+            continue
+        stats = index_image.reduceRegion(
+            reducer=ee.Reducer.mean().combine(ee.Reducer.minMax(), sharedInputs=True),
+            geometry=region,
+            scale=20,
+            maxPixels=int(1e9),
+        ).getInfo()
+        indices_stats[idx] = {
+            "mean": stats.get(f"{idx}_mean"),
+            "min": stats.get(f"{idx}_min"),
+            "max": stats.get(f"{idx}_max"),
+        }
+    return indices_stats, _generar_visuales(region, compuesto)
 
 
 def _to_decimal(obj):
@@ -116,7 +188,7 @@ def handler(event, context):
         message_id = record.get("messageId")
         try:
             msg = json.loads(record["body"])
-            indices_stats = calcular_indices(
+            indices_stats, visual_assets = analizar_lote(
                 msg["geometry"], msg["indices"],
                 msg["date_start"], msg["date_end"],
             )
@@ -124,11 +196,12 @@ def handler(event, context):
             # Guarda los indices crudos en DynamoDB
             table.update_item(
                 Key={"job_id": msg["job_id"]},
-                UpdateExpression="SET #s = :s, indices_stats = :idx",
+                UpdateExpression="SET #s = :s, indices_stats = :idx, visual_assets = :v",
                 ExpressionAttributeNames={"#s": "status"},
                 ExpressionAttributeValues={
                     ":s": "PROCESSING",
                     ":idx": _to_decimal(indices_stats),
+                    ":v": visual_assets,
                 },
             )
 
@@ -146,6 +219,7 @@ def handler(event, context):
                     "area_m2": msg.get("area_m2"),
                     "zona": msg["zona"],
                     "indices": indices_stats,
+                    "visual_assets": visual_assets,
                     "date_start": msg.get("date_start"),
                     "date_end": msg.get("date_end"),
                 }),
