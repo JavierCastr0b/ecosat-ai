@@ -6,7 +6,7 @@ provider:
   runtime: python3.12
   region: us-east-1
   memorySize: 1024
-  timeout: 30
+  timeout: 29
   stage: ${opt:stage, 'dev'}
 
   iam:
@@ -156,6 +156,22 @@ functions:
     events:
       - http:
           path: /parcels/{parcel_id}/analyses
+          method: get
+          cors: true
+
+  getParcelSummary:
+    handler: api/saved_analysis.get_parcel_summary
+    events:
+      - http:
+          path: /parcels/{parcel_id}/summary
+          method: get
+          cors: true
+
+  getCollectionSummary:
+    handler: api/saved_analysis.get_collection_summary
+    events:
+      - http:
+          path: /collections/{collection_id}/summary
           method: get
           cors: true
 
