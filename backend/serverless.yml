@@ -1,4 +1,4 @@
-org: geraldocolchado          # <-- pon tu org de Serverless Dashboard
+org: javiercastro       
 service: ecosat-backend
 
 frameworkVersion: '3'
@@ -10,10 +10,9 @@ provider:
   memorySize: 1024
   timeout: 30
   stage: ${opt:stage, 'dev'}
-  # En Learner Lab NO se pueden crear roles IAM: usamos el LabRole que ya existe.
-  # ${aws:accountId} se resuelve solo, asi sobrevive si el account ID cambia de sesion.
+
   iam:
-    role: arn:aws:iam::${aws:accountId}:role/LabRole
+    role: arn:aws:iam::285023351044:role/LabRole
   environment:
     JOBS_TABLE: ${self:service}-jobs-${sls:stage}
     USERS_TABLE: ${self:service}-users-${sls:stage}
