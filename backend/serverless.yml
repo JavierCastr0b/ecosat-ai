@@ -1,12 +1,9 @@
 org: javiercastro       
 service: ecosat-backend
 
-frameworkVersion: '4'
-useDotenv: true
-
 provider:
   name: aws
-  runtime: python3.14
+  runtime: python3.12
   region: us-east-1
   memorySize: 1024
   timeout: 30
@@ -29,21 +26,16 @@ provider:
     GEE_SERVICE_ACCOUNT: ${env:GEE_SERVICE_ACCOUNT}
     GEE_SERVICE_ACCOUNT_JSON: ${env:GEE_SERVICE_ACCOUNT_JSON}
 
-custom:
-  corsConfig: &corsConfig
-    origin: '*'
-    headers:
-      - Content-Type
-      - Authorization
-      - X-Tenant-Id
-      - X-Amz-Date
-      - X-Api-Key
-      - X-Amz-Security-Token
-  pythonRequirements:
-    # ponlo en 'non-linux' (o true) cuando agregues rasterio/earthengine al worker
-    pythonBin: python3
-    dockerizePip: false
-    slim: true
+package:
+  patterns:
+    - '!node_modules/**'
+    - '!venv/**'
+    - '!.serverless/**'
+    - '!**/__pycache__/**'
+    - '!*.pyc'
+    - 'api/**'
+    - 'workers/**'
+    - 'shared/**'
 
 functions:
   authRegister:
@@ -52,7 +44,7 @@ functions:
       - http:
           path: /auth/register
           method: post
-          cors: *corsConfig
+          cors: true
 
   authLogin:
     handler: api/auth.login
@@ -60,7 +52,7 @@ functions:
       - http:
           path: /auth/login
           method: post
-          cors: *corsConfig
+          cors: true
 
   authMe:
     handler: api/auth.me
@@ -68,7 +60,7 @@ functions:
       - http:
           path: /auth/me
           method: get
-          cors: *corsConfig
+          cors: true
 
   authLogout:
     handler: api/auth.logout
@@ -76,7 +68,7 @@ functions:
       - http:
           path: /auth/logout
           method: post
-          cors: *corsConfig
+          cors: true
 
   listCollections:
     handler: api/collections.list_collections
@@ -84,7 +76,7 @@ functions:
       - http:
           path: /collections
           method: get
-          cors: *corsConfig
+          cors: true
 
   createCollection:
     handler: api/collections.create_collection
@@ -92,7 +84,7 @@ functions:
       - http:
           path: /collections
           method: post
-          cors: *corsConfig
+          cors: true
 
   updateCollection:
     handler: api/collections.update_collection
@@ -100,7 +92,7 @@ functions:
       - http:
           path: /collections/{collection_id}
           method: put
-          cors: *corsConfig
+          cors: true
 
   deleteCollection:
     handler: api/collections.delete_collection
@@ -108,7 +100,7 @@ functions:
       - http:
           path: /collections/{collection_id}
           method: delete
-          cors: *corsConfig
+          cors: true
 
   listParcels:
     handler: api/parcels.list_parcels
@@ -116,7 +108,7 @@ functions:
       - http:
           path: /parcels
           method: get
-          cors: *corsConfig
+          cors: true
 
   createParcel:
     handler: api/parcels.create_parcel
@@ -124,7 +116,7 @@ functions:
       - http:
           path: /parcels
           method: post
-          cors: *corsConfig
+          cors: true
 
   getParcel:
     handler: api/parcels.get_parcel
@@ -132,7 +124,7 @@ functions:
       - http:
           path: /parcels/{parcel_id}
           method: get
-          cors: *corsConfig
+          cors: true
 
   updateParcel:
     handler: api/parcels.update_parcel
@@ -140,7 +132,7 @@ functions:
       - http:
           path: /parcels/{parcel_id}
           method: put
-          cors: *corsConfig
+          cors: true
 
   deleteParcel:
     handler: api/parcels.delete_parcel
@@ -148,7 +140,7 @@ functions:
       - http:
           path: /parcels/{parcel_id}
           method: delete
-          cors: *corsConfig
+          cors: true
 
   createSavedAnalysis:
     handler: api/saved_analysis.create_saved_analysis
@@ -156,7 +148,7 @@ functions:
       - http:
           path: /analysis/saved
           method: post
-          cors: *corsConfig
+          cors: true
 
   listParcelAnalyses:
     handler: api/saved_analysis.list_parcel_analyses
@@ -164,7 +156,7 @@ functions:
       - http:
           path: /parcels/{parcel_id}/analyses
           method: get
-          cors: *corsConfig
+          cors: true
 
   # Recibe la solicitud del frontend, crea el job y hace fan-out:
   # 1 mensaje por zona hacia la cola satelital (lotes de 20-30)
@@ -174,7 +166,7 @@ functions:
       - http:
           path: /analysis
           method: post
-          cors: *corsConfig
+          cors: true
 
   # El frontend hace polling de este endpoint para la barra de progreso
   status:
@@ -183,7 +175,7 @@ functions:
       - http:
           path: /analysis/{id}/status
           method: get
-          cors: *corsConfig
+          cors: true
 
   # Consume la cola satelital, consulta Sentinel-2 y calcula indices
   satelliteWorker:
