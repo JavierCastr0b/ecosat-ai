@@ -511,10 +511,10 @@ curl "https://<api-id>.execute-api.us-east-1.amazonaws.com/dev/analysis/<analysi
 
 ## Video Demo
 
-Agregar aqui el enlace de YouTube cuando este disponible:
+El video de demostracion de la plataforma se encuentra en la siguiente carpeta:
 
 ```txt
-https://youtube.com/...
+https://drive.google.com/drive/folders/1EjcXPjIw6GqmysXsqVS4wvFNIP1itqZq?usp=sharing
 ```
 
 ## Enlace del Frontend Desplegado
