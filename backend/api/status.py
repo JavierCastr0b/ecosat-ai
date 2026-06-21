@@ -8,7 +8,12 @@ from boto3.dynamodb.conditions import Key
 from shared.auth import require_auth
 
 
-CORS = {"Access-Control-Allow-Origin": "*", "Content-Type": "application/json"}
+CORS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Tenant-Id,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+    "Content-Type": "application/json",
+}
 
 
 def _response(status, body):
