@@ -252,9 +252,10 @@ export default function ParcelDetailPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               {visualReports.map((report) => {
                 const assets = report.visual_assets || {}
+                const contextUrl = assets.context_rgb_thumbnail_url
                 const rgbUrl = assets.rgb_thumbnail_url
                 const ndviUrl = assets.ndvi_thumbnail_url
-                const hasImage = Boolean(rgbUrl || ndviUrl)
+                const hasImage = Boolean(contextUrl || rgbUrl || ndviUrl)
                 return (
                   <div
                     key={report.analysis_record_id ?? report.analysis_id}
@@ -270,6 +271,14 @@ export default function ParcelDetailPage() {
                         : 'border-[#E4DFD4] hover:border-[#C5E89A]'
                     }`}
                   >
+                    {contextUrl && (
+                      <div className="relative aspect-[16/7] overflow-hidden border-b border-white/70 bg-soil">
+                        <span className="absolute left-2 top-2 z-10 rounded-full bg-black/65 px-2 py-1 text-[10px] font-bold text-white">
+                          Contexto Sentinel-2
+                        </span>
+                        <img src={contextUrl} alt={`Contexto Sentinel-2 del lote ${report.date_end}`} className="h-full w-full object-cover" loading="lazy" />
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 bg-soil">
                       <div className="relative aspect-[4/3] overflow-hidden">
                         <span className="absolute left-2 top-2 z-10 rounded-full bg-black/65 px-2 py-1 text-[10px] font-bold text-white">
@@ -302,19 +311,54 @@ export default function ParcelDetailPage() {
                         </span>
                       </div>
                       <p className="text-[11px] text-[#A8A09A] mt-1">
-                        RGB real · NDVI visual · {report.estado_cultivo ?? 'sin estado'}
+                        Contexto Sentinel · RGB del lote · NDVI visual · {report.estado_cultivo ?? 'sin estado'}
                       </p>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          handleDeleteAnalysis(report)
-                        }}
-                        disabled={deletingAnalysisId === report.analysis_record_id}
-                        className="mt-3 rounded-lg border border-[#E04F31]/30 px-2 py-1 text-[11px] font-semibold text-[#8C2415] hover:border-[#E04F31]/60 hover:bg-[#FDE8E3] disabled:opacity-50 transition-colors"
-                      >
-                        {deletingAnalysisId === report.analysis_record_id ? 'Eliminando...' : 'Eliminar análisis'}
-                      </button>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {contextUrl && (
+                          <a
+                            href={contextUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="rounded-lg border border-[#D4C9B0] px-2 py-1 text-[11px] font-semibold text-[#6B6259] hover:border-[#9EE832] hover:text-[#3D6B0C] transition-colors"
+                          >
+                            Abrir contexto
+                          </a>
+                        )}
+                        {rgbUrl && (
+                          <a
+                            href={rgbUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="rounded-lg border border-[#D4C9B0] px-2 py-1 text-[11px] font-semibold text-[#6B6259] hover:border-[#9EE832] hover:text-[#3D6B0C] transition-colors"
+                          >
+                            Abrir RGB
+                          </a>
+                        )}
+                        {ndviUrl && (
+                          <a
+                            href={ndviUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="rounded-lg border border-[#D4C9B0] px-2 py-1 text-[11px] font-semibold text-[#6B6259] hover:border-[#9EE832] hover:text-[#3D6B0C] transition-colors"
+                          >
+                            Abrir NDVI
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleDeleteAnalysis(report)
+                          }}
+                          disabled={deletingAnalysisId === report.analysis_record_id}
+                          className="rounded-lg border border-[#E04F31]/30 px-2 py-1 text-[11px] font-semibold text-[#8C2415] hover:border-[#E04F31]/60 hover:bg-[#FDE8E3] disabled:opacity-50 transition-colors"
+                        >
+                          {deletingAnalysisId === report.analysis_record_id ? 'Eliminando...' : 'Eliminar análisis'}
+                        </button>
+                      </div>
                       {ndviUrl && (
                         <div className="mt-2">
                           <div className="h-1.5 rounded-full bg-gradient-to-r from-[#8C2415] via-[#F6C343] to-[#1F7A1F]" />

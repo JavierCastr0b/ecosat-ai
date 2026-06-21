@@ -104,9 +104,10 @@ function epochChangeRows(analyses = []) {
 
 function imageSection(report) {
   const assets = report?.visual_assets || {}
+  const context = assets.context_rgb_thumbnail_url
   const rgb = assets.rgb_thumbnail_url
   const ndvi = assets.ndvi_thumbnail_url
-  if (!rgb && !ndvi) {
+  if (!context && !rgb && !ndvi) {
     return `
       <h2>Capturas satelitales</h2>
       <p class="muted">Este reporte no tiene capturas guardadas. Genera un nuevo análisis para incluir RGB y NDVI visual.</p>
@@ -114,6 +115,12 @@ function imageSection(report) {
   }
   return `
     <h2>Capturas satelitales</h2>
+    ${context ? `
+      <div class="image-card context">
+        <div class="image-label">Contexto Sentinel-2 del periodo</div>
+        <img src="${context}" alt="Contexto Sentinel-2" />
+      </div>
+    ` : ''}
     <div class="images">
       <div class="image-card">
         <div class="image-label">RGB satelital</div>
@@ -155,8 +162,10 @@ export function openReportPdf({ parcel, collection, report, analyses = [] }) {
           .summary { background: #F7FAEF; border-left: 4px solid #9EE832; padding: 12px; }
           .images { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
           .image-card { border: 1px solid #D9D5CC; border-radius: 10px; overflow: hidden; background: #F7F3EA; }
+          .image-card.context { margin-top: 10px; margin-bottom: 12px; }
           .image-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding: 8px 10px; background: #1f271c; color: white; }
           .image-card img { display: block; width: 100%; height: 210px; object-fit: cover; }
+          .image-card.context img { height: 260px; }
           .empty { height: 210px; display: flex; align-items: center; justify-content: center; color: #6B6259; font-size: 12px; }
           .legend { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 8px 10px; font-size: 10px; color: #6B6259; }
           .legend b { display: block; height: 7px; border-radius: 999px; background: linear-gradient(90deg, #8C2415, #F6C343, #1F7A1F); }

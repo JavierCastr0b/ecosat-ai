@@ -96,6 +96,9 @@ def _generar_visuales(region, compuesto):
         "source": "GOOGLE_EARTH_ENGINE",
     }
     errors = []
+    context_region = region.buffer(500).bounds()
+    context_bounds = context_region.getInfo()["coordinates"]
+    region_bounds = region.bounds().getInfo()["coordinates"]
     try:
         rgb = compuesto.select(["B4", "B3", "B2"]).clip(region).visualize(
             min=0,
@@ -104,12 +107,27 @@ def _generar_visuales(region, compuesto):
         )
         visuales["rgb_thumbnail_url"] = rgb.clip(region).getThumbURL({
             **VIS_PARAMS,
-            "region": region.bounds().getInfo()["coordinates"],
+            "region": region_bounds,
         })
     except Exception as e:
         error = f"RGB: {e}"
         errors.append(error)
         print(f"No se pudo generar miniatura RGB: {error}")
+
+    try:
+        context_rgb = compuesto.select(["B4", "B3", "B2"]).visualize(
+            min=0,
+            max=3000,
+            gamma=1.2,
+        )
+        visuales["context_rgb_thumbnail_url"] = context_rgb.getThumbURL({
+            **VIS_PARAMS,
+            "region": context_bounds,
+        })
+    except Exception as e:
+        error = f"RGB contexto: {e}"
+        errors.append(error)
+        print(f"No se pudo generar miniatura RGB de contexto: {error}")
 
     try:
         ndvi = compuesto.normalizedDifference(["B8", "B4"]).rename("NDVI")
@@ -120,14 +138,18 @@ def _generar_visuales(region, compuesto):
         )
         visuales["ndvi_thumbnail_url"] = ndvi_visual.clip(region).getThumbURL({
             **VIS_PARAMS,
-            "region": region.bounds().getInfo()["coordinates"],
+            "region": region_bounds,
         })
     except Exception as e:
         error = f"NDVI: {e}"
         errors.append(error)
         print(f"No se pudo generar miniatura NDVI: {error}")
 
-    if visuales.get("rgb_thumbnail_url") or visuales.get("ndvi_thumbnail_url"):
+    if (
+        visuales.get("rgb_thumbnail_url")
+        or visuales.get("ndvi_thumbnail_url")
+        or visuales.get("context_rgb_thumbnail_url")
+    ):
         visuales["status"] = "AVAILABLE"
     else:
         visuales["status"] = "FAILED"
