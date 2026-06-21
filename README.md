@@ -40,39 +40,6 @@ La arquitectura es predominantemente serverless, orientada a eventos y asincrona
 
 ![Diagrama de Arquitectura de Solucion](./Arquitectura-Solucion.png)
 
-```mermaid
-flowchart LR
-    U[Usuario / Agricultor] -->|HTTPS| FE[S3 Static Website\nReact + Vite]
-    FE -->|REST HTTPS| APIGW[Amazon API Gateway]
-
-    subgraph AWS[AWS Serverless]
-        APIGW --> AUTH[Lambda Auth\nregistro / login / tokens]
-        APIGW --> COL[Lambda Collections\nCRUD fincas]
-        APIGW --> PAR[Lambda Parcels\nCRUD lotes]
-        APIGW --> ANA[Lambda Saved Analysis\ncrea analysis_id y jobs]
-        APIGW --> STA[Lambda Status\npolling de progreso]
-
-        AUTH --> DDB[(DynamoDB\nUsers / AuthTokens)]
-        COL --> DDB2[(DynamoDB\nCollections)]
-        PAR --> DDB3[(DynamoDB\nParcels)]
-        ANA --> JOBS[(DynamoDB\nJobs)]
-        ANA --> INPUTS[(S3 Inputs\nJSON de respaldo)]
-        ANA --> SQSSAT[SQS Satellite Queue]
-
-        SQSSAT --> SAT[Lambda Satellite Worker]
-        SAT --> JOBS
-        SAT --> SQSLLM[SQS LLM Queue]
-
-        SQSLLM --> LLM[Lambda LLM Worker]
-        LLM --> HIST[(DynamoDB\nParcelAnalyses)]
-        STA --> JOBS
-        FE -->|historial / resumen| APIGW
-    end
-
-    SAT -->|Sentinel-2 / thumbnails| GEE[Google Earth Engine]
-    LLM -->|diagnostico agricola| GROQ[Groq LLM]
-```
-
 ## Flujo de Eventos
 
 1. El usuario abre EcoSat AI desde Amazon S3 Static Website Hosting.
