@@ -262,6 +262,36 @@ def list_parcel_analyses(event, context):
     return response(200, {"analyses": analyses})
 
 
+def delete_parcel_analysis(event, context):
+    auth, error = require_auth(event)
+    if error:
+        return error
+
+    params = event.get("pathParameters") or {}
+    parcel_id = params.get("parcel_id")
+    analysis_record_id = params.get("analysis_record_id")
+    if not parcel_id or not analysis_record_id:
+        return response(400, {"error": "parcel_id y analysis_record_id requeridos"})
+
+    analyses_table = table("PARCEL_ANALYSES_TABLE")
+    key = {
+        "tenant_id": auth["tenant_id"],
+        "analysis_record_id": analysis_record_id,
+    }
+    item = analyses_table.get_item(Key=key).get("Item")
+    if not item:
+        return response(404, {"error": "analisis no encontrado"})
+    if item.get("parcel_id") != parcel_id:
+        return response(403, {"error": "analisis no pertenece al lote"})
+
+    analyses_table.delete_item(Key=key)
+    return response(200, {
+        "deleted": True,
+        "parcel_id": parcel_id,
+        "analysis_record_id": analysis_record_id,
+    })
+
+
 def get_parcel_summary(event, context):
     auth, error = require_auth(event)
     if error:

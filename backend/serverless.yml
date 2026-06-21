@@ -159,6 +159,14 @@ functions:
           method: get
           cors: true
 
+  deleteParcelAnalysis:
+    handler: api/saved_analysis.delete_parcel_analysis
+    events:
+      - http:
+          path: /parcels/{parcel_id}/analyses/{analysis_record_id}
+          method: delete
+          cors: true
+
   getParcelSummary:
     handler: api/saved_analysis.get_parcel_summary
     events:

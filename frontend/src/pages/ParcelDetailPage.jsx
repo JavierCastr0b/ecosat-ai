@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { getParcel, getParcelSummary, listParcelAnalyses, deleteParcel } from '../api/parcels'
+import { getParcel, getParcelSummary, listParcelAnalyses, deleteParcel, deleteParcelAnalysis } from '../api/parcels'
 import { listCollections } from '../api/collections'
 import ParcelMap from '../components/ParcelMap'
 import MetricCard from '../components/MetricCard'
@@ -16,6 +16,17 @@ const CROP_LABELS = {
   yuca: 'Yuca', otro: 'Otro',
 }
 
+function formatPeriod(start, end) {
+  const opts = { month: 'short', year: 'numeric', timeZone: 'UTC' }
+  const format = (value) => {
+    if (!value) return '-'
+    const date = new Date(`${value}T00:00:00Z`)
+    if (Number.isNaN(date.getTime())) return value
+    return new Intl.DateTimeFormat('es-PE', opts).format(date).replace('.', '')
+  }
+  return `${format(start)} – ${format(end)}`
+}
+
 export default function ParcelDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -26,32 +37,35 @@ export default function ParcelDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedReportId, setSelectedReportId] = useState(null)
+  const [deletingAnalysisId, setDeletingAnalysisId] = useState(null)
+
+  async function loadParcelData({ keepLoading = false } = {}) {
+    if (!keepLoading) setLoading(true)
+    try {
+      const [parcelData, sumData, analData] = await Promise.all([
+        getParcel(id),
+        getParcelSummary(id),
+        listParcelAnalyses(id, true, 12),
+      ])
+      setParcel(parcelData)
+      setSummary(sumData)
+      setAnalyses(analData.analyses ?? analData ?? [])
+
+      const collectionId = parcelData?.collection_id ?? sumData?.parcel?.collection_id
+      if (collectionId) {
+        const colData = await listCollections()
+        const cols = colData.collections ?? colData ?? []
+        setCollection(cols.find((c) => c.collection_id === collectionId) ?? null)
+      }
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [parcelData, sumData, analData] = await Promise.all([
-          getParcel(id),
-          getParcelSummary(id),
-          listParcelAnalyses(id, true, 12),
-        ])
-        setParcel(parcelData)
-        setSummary(sumData)
-        setAnalyses(analData.analyses ?? analData ?? [])
-
-        const collectionId = parcelData?.collection_id ?? sumData?.parcel?.collection_id
-        if (collectionId) {
-          const colData = await listCollections()
-          const cols = colData.collections ?? colData ?? []
-          setCollection(cols.find((c) => c.collection_id === collectionId) ?? null)
-        }
-      } catch (e) {
-        setError(e.message)
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
+    loadParcelData()
   }, [id])
 
   async function handleDelete() {
@@ -61,6 +75,22 @@ export default function ParcelDetailPage() {
       navigate(collection ? `/collections/${collection.collection_id}` : '/collections')
     } catch (e) {
       setError(e.message)
+    }
+  }
+
+  async function handleDeleteAnalysis(report) {
+    if (!report?.analysis_record_id) return
+    if (!confirm(`¿Eliminar el análisis de ${formatPeriod(report.date_start, report.date_end)}? Esta acción no se puede deshacer.`)) return
+    setDeletingAnalysisId(report.analysis_record_id)
+    setError('')
+    try {
+      await deleteParcelAnalysis(id, report.analysis_record_id)
+      if (selectedReportId === report.analysis_id) setSelectedReportId(null)
+      await loadParcelData({ keepLoading: true })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setDeletingAnalysisId(null)
     }
   }
 
@@ -226,10 +256,14 @@ export default function ParcelDetailPage() {
                 const ndviUrl = assets.ndvi_thumbnail_url
                 const hasImage = Boolean(rgbUrl || ndviUrl)
                 return (
-                  <button
+                  <div
                     key={report.analysis_record_id ?? report.analysis_id}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedReportId(report.analysis_id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') setSelectedReportId(report.analysis_id)
+                    }}
                     className={`text-left rounded-2xl border shadow-sm overflow-hidden transition-all hover:shadow-md ${
                       selectedReport?.analysis_id === report.analysis_id
                         ? 'border-[#9EE832] ring-2 ring-[#9EE832]/30'
@@ -237,14 +271,20 @@ export default function ParcelDetailPage() {
                     }`}
                   >
                     <div className="grid grid-cols-2 bg-soil">
-                      <div className="aspect-[4/3] overflow-hidden">
+                      <div className="relative aspect-[4/3] overflow-hidden">
+                        <span className="absolute left-2 top-2 z-10 rounded-full bg-black/65 px-2 py-1 text-[10px] font-bold text-white">
+                          RGB satelital
+                        </span>
                         {rgbUrl ? (
                           <img src={rgbUrl} alt={`Imagen RGB del lote ${report.date_end}`} className="h-full w-full object-cover" loading="lazy" />
                         ) : (
                           <div className="h-full w-full flex items-center justify-center text-xs text-[#A8A09A]">RGB no disponible</div>
                         )}
                       </div>
-                      <div className="aspect-[4/3] overflow-hidden border-l border-white/70">
+                      <div className="relative aspect-[4/3] overflow-hidden border-l border-white/70">
+                        <span className="absolute left-2 top-2 z-10 rounded-full bg-black/65 px-2 py-1 text-[10px] font-bold text-white">
+                          NDVI vigor
+                        </span>
                         {ndviUrl ? (
                           <img src={ndviUrl} alt={`Mapa NDVI del lote ${report.date_end}`} className="h-full w-full object-cover" loading="lazy" />
                         ) : (
@@ -254,7 +294,7 @@ export default function ParcelDetailPage() {
                     </div>
                     <div className="p-3 bg-field">
                       <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-bold text-orbit">{report.date_start} – {report.date_end}</p>
+                        <p className="text-xs font-bold text-orbit">{formatPeriod(report.date_start, report.date_end)}</p>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                           hasImage ? 'bg-[#E8F7D4] text-[#3D6B0C]' : 'bg-[#FDE8E3] text-[#8C2415]'
                         }`}>
@@ -264,13 +304,33 @@ export default function ParcelDetailPage() {
                       <p className="text-[11px] text-[#A8A09A] mt-1">
                         RGB real · NDVI visual · {report.estado_cultivo ?? 'sin estado'}
                       </p>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleDeleteAnalysis(report)
+                        }}
+                        disabled={deletingAnalysisId === report.analysis_record_id}
+                        className="mt-3 rounded-lg border border-[#E04F31]/30 px-2 py-1 text-[11px] font-semibold text-[#8C2415] hover:border-[#E04F31]/60 hover:bg-[#FDE8E3] disabled:opacity-50 transition-colors"
+                      >
+                        {deletingAnalysisId === report.analysis_record_id ? 'Eliminando...' : 'Eliminar análisis'}
+                      </button>
+                      {ndviUrl && (
+                        <div className="mt-2">
+                          <div className="h-1.5 rounded-full bg-gradient-to-r from-[#8C2415] via-[#F6C343] to-[#1F7A1F]" />
+                          <div className="mt-1 flex justify-between text-[10px] text-[#A8A09A]">
+                            <span>Bajo vigor</span>
+                            <span>Buen vigor</span>
+                          </div>
+                        </div>
+                      )}
                       {!hasImage && (
                         <p className="text-[11px] text-[#8C2415] mt-2">
                           La imagen se generará en nuevos análisis si Earth Engine devuelve miniatura.
                         </p>
                       )}
                     </div>
-                  </button>
+                  </div>
                 )
               })}
             </div>
@@ -347,12 +407,21 @@ export default function ParcelDetailPage() {
                 <h2 className="font-semibold text-orbit">Reporte histórico seleccionado</h2>
                 <p className="text-xs text-[#A8A09A]">{selectedReport.date_start} – {selectedReport.date_end}</p>
               </div>
-              <button
-                onClick={() => handleExportReport(selectedReport)}
-                className="rounded-lg border border-[#9EE832] text-[#3D6B0C] px-3 py-1.5 text-xs font-semibold hover:bg-[#E8F7D4] transition-colors"
-              >
-                Exportar PDF
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleExportReport(selectedReport)}
+                  className="rounded-lg border border-[#9EE832] text-[#3D6B0C] px-3 py-1.5 text-xs font-semibold hover:bg-[#E8F7D4] transition-colors"
+                >
+                  Exportar PDF
+                </button>
+                <button
+                  onClick={() => handleDeleteAnalysis(selectedReport)}
+                  disabled={deletingAnalysisId === selectedReport.analysis_record_id}
+                  className="rounded-lg border border-[#E04F31]/30 text-[#8C2415] px-3 py-1.5 text-xs font-semibold hover:border-[#E04F31]/60 hover:bg-[#FDE8E3] disabled:opacity-50 transition-colors"
+                >
+                  {deletingAnalysisId === selectedReport.analysis_record_id ? 'Eliminando...' : 'Eliminar'}
+                </button>
+              </div>
             </div>
             <p className="text-sm text-[#3D3028] leading-relaxed mb-4">{selectedReport.resumen}</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -382,7 +451,7 @@ export default function ParcelDetailPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E4DFD4]">
-                    {['Período', 'NDVI', 'NDMI', 'NDRE', 'SAVI', 'Estado', 'Prioridad', 'Reporte'].map((h) => (
+                    {['Período', 'NDVI', 'NDMI', 'NDRE', 'SAVI', 'Estado', 'Prioridad', 'Acciones'].map((h) => (
                       <th key={h} className="text-left text-[11px] font-bold text-[#A8A09A] uppercase tracking-widest pb-2 pr-4">{h}</th>
                     ))}
                   </tr>
@@ -398,12 +467,19 @@ export default function ParcelDetailPage() {
                       ))}
                       <td className="py-2.5 pr-4"><StatusBadge value={a.estado_cultivo} /></td>
                       <td className="py-2.5"><StatusBadge value={a.prioridad} /></td>
-                      <td className="py-2.5">
+                      <td className="py-2.5 pr-4">
                         <button
                           onClick={() => setSelectedReportId(a.analysis_id)}
                           className="rounded-lg border border-[#D4C9B0] px-2 py-1 text-xs text-[#6B6259] hover:border-[#9EE832] hover:text-[#3D6B0C] transition-colors"
                         >
                           Ver
+                        </button>
+                        <button
+                          onClick={() => handleDeleteAnalysis(a)}
+                          disabled={deletingAnalysisId === a.analysis_record_id}
+                          className="ml-2 rounded-lg border border-[#E04F31]/30 px-2 py-1 text-xs text-[#8C2415] hover:border-[#E04F31]/60 hover:bg-[#FDE8E3] disabled:opacity-50 transition-colors"
+                        >
+                          {deletingAnalysisId === a.analysis_record_id ? '...' : 'Borrar'}
                         </button>
                       </td>
                     </tr>

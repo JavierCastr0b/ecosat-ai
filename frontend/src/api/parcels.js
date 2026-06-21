@@ -14,3 +14,6 @@ export const getParcelSummary = (id) => get(`/parcels/${id}/summary`)
 
 export const listParcelAnalyses = (id, compact = false, limit = 12) =>
   get(`/parcels/${id}/analyses?compact=${compact}&limit=${limit}`)
+
+export const deleteParcelAnalysis = (parcelId, analysisRecordId) =>
+  del(`/parcels/${parcelId}/analyses/${analysisRecordId}`)
