@@ -19,6 +19,7 @@ provider:
     PARCELS_TABLE: ${self:service}-parcels-${sls:stage}
     PARCEL_ANALYSES_TABLE: ${self:service}-parcel-analyses-${sls:stage}
     INPUTS_BUCKET: ${self:service}-inputs-${sls:stage}-${aws:accountId}
+    FRONTEND_BUCKET: ${self:service}-frontend-${sls:stage}-${aws:accountId}
     SATELLITE_QUEUE_URL: !Ref SatelliteQueue
     LLM_QUEUE_URL: !Ref LlmQueue
     GROQ_API_KEY: ${env:GROQ_API_KEY}
@@ -353,6 +354,32 @@ resources:
       Properties:
         BucketName: ${self:provider.environment.INPUTS_BUCKET}
 
+    FrontendBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.FRONTEND_BUCKET}
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: index.html
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: false
+          BlockPublicPolicy: false
+          IgnorePublicAcls: false
+          RestrictPublicBuckets: false
+
+    FrontendBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref FrontendBucket
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Sid: PublicReadGetObject
+              Effect: Allow
+              Principal: "*"
+              Action: s3:GetObject
+              Resource: !Sub "${FrontendBucket.Arn}/*"
+
     # --- Cola satelital + su DLQ (no se pierde data) ---
     SatelliteQueue:
       Type: AWS::SQS::Queue
@@ -382,3 +409,9 @@ resources:
       Properties:
         QueueName: ${self:service}-llm-dlq-${sls:stage}
         MessageRetentionPeriod: 1209600
+
+  Outputs:
+    FrontendBucketName:
+      Value: !Ref FrontendBucket
+    FrontendWebsiteUrl:
+      Value: !Sub "http://${FrontendBucket}.s3-website-${AWS::Region}.amazonaws.com"
